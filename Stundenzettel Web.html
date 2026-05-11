@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="de" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Stundenzettel - PSG Aachen</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root { --psg-blue: #006eb7; --psg-bg: #ccd8ee; --psg-white: #ffffff; }
+        
+        /* Macht den Hintergrund dynamisch über die gesamte Höhe */
+        html, body { 
+            height: auto; 
+            min-height: 100%; 
+            margin: 0; 
+            padding: 0;
+            background-color: var(--psg-bg);
+        }
+
+        body { 
+            font-family: 'Verdana', sans-serif; 
+            -webkit-tap-highlight-color: transparent;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* Mobile Optimierung */
+        @media (max-width: 768px) {
+            .mobile-hide { display: none; }
+            th { font-size: 9px !important; padding: 8px 4px !important; }
+            td { padding: 10px 4px !important; font-size: 11px !important; }
+            input[type="date"] { min-width: 0; width: 100%; display: block; -webkit-appearance: none; }
+        }
+
+        @media print {
+            .no-print { display: none !important; }
+            body { background: white; padding: 0; margin: 0; }
+            .print-container { width: 100%; max-width: none; border: none; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { border: 1px solid #ccc !important; padding: 4px !important; font-size: 10px; }
+        }
+        
+        .print-header { display: none; }
+        .label-style { @apply block text-[10px] font-bold text-slate-500 uppercase mb-1; }
+        .logo-img { max-height: 45px; object-fit: contain; }
+        .bg-psg { background-color: var(--psg-blue); }
+        .text-psg { color: var(--psg-blue); }
+        .confirm-delete { background-color: #ef4444 !important; color: white !important; border-radius: 4px; padding: 4px 6px; font-weight: bold; }
+    </style>
+</head>
+<body class="p-2 md:p-6 text-sm text-slate-800">
+
+    <!-- Hauptcontainer ohne künstliche Höhenbegrenzung -->
+    <div class="max-w-6xl mx-auto w-full space-y-4 md:space-y-6 print-container flex-grow">
+        
+        <!-- Header & Sync -->
+        <div class="bg-white p-4 rounded-2xl shadow-xl border-t-8 border-psg no-print">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                    <img src="https://www.psg-aachen.de/wp-content/uploads/2025/02/2025_PSG-Aachen-Logo-gros_einfarbig-outline.png" class="logo-img">
+                    <h1 class="text-lg font-bold tracking-tighter uppercase text-psg hidden md:block">Zeiterfassung</h1>
+                </div>
+                <div class="flex gap-2">
+                    <button id="btn-backup" onclick="saveToCloud()" class="bg-slate-700 text-white px-3 py-2 rounded-lg text-[10px] font-bold uppercase transition-all">Cloud Sync</button>
+                    <button onclick="window.print()" class="bg-psg text-white px-3 py-2 rounded-lg text-[10px] font-bold uppercase shadow-lg">Drucken</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 1. BLOCK: EINTRAGEN -->
+        <div class="bg-white p-4 md:p-6 rounded-xl border-2 border-slate-100 shadow-sm no-print">
+            <h2 class="label-style text-psg mb-4 border-b pb-2">Neuer Eintrag</h2>
+            <div class="flex flex-col gap-4">
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div class="col-span-2 md:col-span-2">
+                        <label class="label-style text-psg">Datum</label>
+                        <input type="date" id="datum" class="w-full p-3 border-2 border-slate-100 rounded-lg bg-slate-50 text-base">
+                    </div>
+                    <div class="col-span-1 md:col-span-1">
+                        <label class="label-style text-psg">Typ</label>
+                        <select id="typ" class="w-full p-3 border-2 border-slate-100 rounded-lg font-bold bg-slate-50">
+                            <option value="Arbeit">Arbeit</option>
+                            <option value="Urlaub">Urlaub</option>
+                            <option value="Krank">Krank</option>
+                        </select>
+                    </div>
+                    <div class="col-span-1 md:col-span-1">
+                        <label class="label-style text-psg">Pause (Min)</label>
+                        <input type="number" id="pause" value="0" class="w-full p-3 border-2 border-slate-100 rounded-lg bg-slate-50">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div class="col-span-1 md:col-span-2">
+                        <label class="label-style text-psg">Von - Bis</label>
+                        <div class="flex gap-1">
+                            <input type="time" id="start" class="w-1/2 p-3 border-2 border-slate-100 rounded-lg bg-slate-50">
+                            <input type="time" id="ende" class="w-1/2 p-3 border-2 border-slate-100 rounded-lg bg-slate-50">
+                        </div>
+                    </div>
+                    <div class="col-span-1 md:col-span-2 flex items-end">
+                        <button onclick="speichern()" class="w-full bg-psg text-white font-black py-3.5 rounded-lg hover:opacity-90 uppercase text-xs shadow-md">Hinzufügen</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. BLOCK: QUICK STATS -->
+        <div class="grid grid-cols-2 gap-3 no-print">
+            <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-psg text-center">
+                <span class="label-style">Saldo</span>
+                <span id="stat_gesamt" class="text-lg md:text-3xl font-black text-psg">00:00</span>
+            </div>
+            <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-slate-300 text-center">
+                <span class="label-style">Resturlaub</span>
+                <span id="stat_urlaub" class="text-lg md:text-3xl font-black text-slate-700">0 T</span>
+            </div>
+        </div>
+
+        <!-- 3. BLOCK: KONFIGURATION -->
+        <div class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm no-print">
+            <details class="group">
+                <summary class="flex justify-between items-center cursor-pointer list-none">
+                    <span class="label-style">Einstellungen</span>
+                    <span class="transition group-open:rotate-180">▼</span>
+                </summary>
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-3 pt-4">
+                    <div class="col-span-1"><label class="label-style">Jahr</label><input type="number" id="cfg_jahr" onchange="saveConfig()" class="bg-slate-50 border border-slate-200 rounded w-full p-2 text-sm"></div>
+                    <div class="col-span-1"><label class="label-style">Std/Woche</label><input type="number" id="cfg_umfang" step="0.01" onchange="saveConfig()" class="bg-slate-50 border border-slate-200 rounded w-full p-2 text-sm"></div>
+                    <div class="col-span-2 md:col-span-1"><label class="label-style">Mitarbeiter</label><input type="text" id="cfg_name" onchange="saveConfig()" class="bg-slate-50 border border-slate-200 rounded w-full p-2 text-sm"></div>
+                    <div class="col-span-1"><label class="label-style">Urlaub</label><input type="number" id="cfg_urlaub" onchange="saveConfig()" class="bg-slate-50 border border-slate-200 rounded w-full p-2 text-sm"></div>
+                    <div class="col-span-1"><label class="label-style">Übertrag</label><input type="text" id="cfg_uebertrag_time" onchange="saveConfig()" class="bg-slate-50 border border-slate-200 rounded w-full p-2 text-sm"></div>
+                </div>
+            </details>
+        </div>
+
+        <!-- 4. BLOCK: TABELLE -->
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-slate-200 mb-8">
+            <div class="p-4 border-b flex justify-between items-center bg-slate-50 no-print">
+                <h2 class="font-bold text-psg uppercase text-[10px] tracking-widest">Übersicht</h2>
+                <select id="monatFilter" onchange="render()" class="p-2 border rounded font-bold text-xs bg-white text-psg">
+                    <option value="0">Januar</option><option value="1">Februar</option><option value="2">März</option><option value="3">April</option><option value="4">Mai</option><option value="5">Juni</option><option value="6">Juli</option><option value="7">August</option><option value="8">September</option><option value="9">Oktober</option><option value="10">November</option><option value="11">Dezember</option>
+                </select>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead class="bg-slate-50 text-[9px] md:text-[10px] uppercase text-slate-400 font-bold border-b">
+                        <tr>
+                            <th class="p-2 md:p-4 w-16">Datum</th>
+                            <th class="p-2 md:p-4 w-10">Typ</th>
+                            <th class="p-2 md:p-4 mobile-hide">Zeit</th>
+                            <th class="p-2 md:p-4 text-center">Netto</th>
+                            <th class="p-2 md:p-4 text-center">Zus.</th>
+                            <th class="p-2 md:p-4 text-center mobile-hide">Soll</th>
+                            <th class="p-2 md:p-4 text-right">Saldo</th>
+                            <th class="p-2 md:p-4 no-print text-center w-20"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabelleBody" class="divide-y text-[11px] md:text-xs"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- DRUCK-HEADER -->
+    <div class="print-header">
+        <div>
+            <h1 class="text-2xl font-bold text-psg">Arbeitszeitnachweis</h1>
+            <p id="print_name_monat"></p>
+            <div class="text-[10px]">Stand: <span id="print_today"></span></div>
+        </div>
+        <div class="text-right">
+            <div class="text-2xl font-black text-psg" id="print_gesamtsaldo">00:00</div>
+        </div>
+    </div>
+
+    <script>
+        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbz9uBbHJS1lSiRt2CMyNoLntWt_GXaTzKSeJH8-TMUMvBVu-DeAulKCxszSL6J0Y-dS/exec";
+
+        let config = JSON.parse(localStorage.getItem('kavo_config_v21')) || { jahr: 2026, name: "", umfang: 39, urlaub: 30, uebertrag: 0 };
+        let eintraege = JSON.parse(localStorage.getItem('kavo_data_v21')) || [];
+        let isSyncing = false;
+        let deleteConfirmId = null;
+
+        function formatHToTime(decimalH) {
+            const isNeg = decimalH < 0;
+            const absH = Math.abs(decimalH);
+            const h = Math.floor(absH);
+            const m = Math.round((absH - h) * 60);
+            return (isNeg ? '-' : '') + h.toString().padStart(2, '0') + ':' + m.toString().padStart(2, '0');
+        }
+
+        function formatTimeToH(timeStr) {
+            if(!timeStr || !timeStr.includes(':')) return 0;
+            const parts = timeStr.split(':');
+            const h = Math.abs(parseInt(parts[0]));
+            const m = parseInt(parts[1]);
+            return (h + (m/60)) * (timeStr.startsWith('-') ? -1 : 1);
+        }
+
+        function getFeiertage(jahr) {
+            const a = jahr % 19, b = jahr % 4, c = jahr % 7, k = Math.floor(jahr / 100);
+            const p = Math.floor((8 * k + 13) / 25), q = Math.floor(k / 4), M = (15 + k - p - q) % 30, N = (4 + k - q) % 7;
+            const d = (19 * a + M) % 30, e = (2 * b + 4 * c + 6 * d + N) % 7;
+            const ostern = new Date(jahr, 2, 22 + d + e + 1);
+            const f = (date, days) => { let r = new Date(date); r.setDate(r.getDate() + days); return r.toISOString().split('T')[0]; };
+            return {
+                [jahr+"-01-01"]:"Neujahr", [f(ostern,-48)]:"Rosenmontag", [f(ostern,-2)]:"Karfreitag", [f(ostern,1)]:"Ostermontag", [jahr+"-05-01"]:"Tag d. Arbeit",
+                [f(ostern,39)]:"Himmelfahrt", [f(ostern,50)]:"Pfingstmontag", [f(ostern,60)]:"Fronleichnam", [jahr+"-10-03"]:"Dt. Einheit", [jahr+"-11-01"]:"Allerheiligen",
+                [jahr+"-12-24"]:"Heiligabend", [jahr+"-12-25"]:"1. Weih.", [jahr+"-12-26"]:"2. Weih.", [jahr+"-12-31"]:"Silvester"
+            };
+        }
+
+        function calculateBlockZuschlag(dateStr, startH, endeH) {
+            const date = new Date(dateStr);
+            const ft = getFeiertage(config.jahr);
+            let totalZuschlagH = 0;
+            for (let t = startH; t < endeH; t += 0.25) {
+                const currentEnd = Math.min(t + 0.25, endeH);
+                let maxRate = 0;
+                if (ft[dateStr]) maxRate = 0.35;
+                else if (date.getDay() === 0) maxRate = 0.25;
+                else {
+                    if (t < 6 || currentEnd > 21) maxRate = Math.max(maxRate, 0.20);
+                    if (date.getDay() === 6 && currentEnd > 13) maxRate = Math.max(maxRate, 0.20);
+                }
+                totalZuschlagH += (currentEnd - t) * maxRate;
+            }
+            return totalZuschlagH;
+        }
+
+        async function saveToCloud() {
+            if(isSyncing) return;
+            isSyncing = true;
+            const btn = document.getElementById('btn-backup');
+            if(btn) btn.innerText = "☁️...";
+            try {
+                await fetch(WEB_APP_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ config, eintraege }) });
+                if(btn) { btn.innerText = "✅ OK"; setTimeout(() => btn.innerText = "Cloud Sync", 2000); }
+            } catch (e) { if(btn) btn.innerText = "❌"; } finally { isSyncing = false; }
+        }
+
+        async function loadFromCloud() {
+            if(isSyncing) return;
+            try {
+                const res = await fetch(WEB_APP_URL);
+                const data = await res.json();
+                if (data && data.config && data.eintraege) {
+                    config = data.config; eintraege = data.eintraege;
+                    localStorage.setItem('kavo_config_v21', JSON.stringify(config));
+                    localStorage.setItem('kavo_data_v21', JSON.stringify(eintraege));
+                    render();
+                }
+            } catch (e) { console.log("Cloud leer/offline"); }
+            initUI();
+        }
+
+        function initUI() {
+            document.getElementById('cfg_jahr').value = config.jahr;
+            document.getElementById('cfg_name').value = config.name;
+            document.getElementById('cfg_umfang').value = config.umfang;
+            document.getElementById('cfg_urlaub').value = config.urlaub;
+            document.getElementById('cfg_uebertrag_time').value = formatHToTime(config.uebertrag);
+            document.getElementById('datum').value = new Date().toISOString().split('T')[0];
+            document.getElementById('monatFilter').value = new Date().getMonth();
+            render();
+        }
+
+        function saveConfig() {
+            config.jahr = parseInt(document.getElementById('cfg_jahr').value);
+            config.name = document.getElementById('cfg_name').value;
+            config.umfang = parseFloat(document.getElementById('cfg_umfang').value) || 0;
+            config.urlaub = parseInt(document.getElementById('cfg_urlaub').value) || 0;
+            config.uebertrag = formatTimeToH(document.getElementById('cfg_uebertrag_time').value);
+            localStorage.setItem('kavo_config_v21', JSON.stringify(config));
+            saveToCloud(); render();
+        }
+
+        async function speichern() {
+            const d = document.getElementById('datum').value;
+            if(!d) return;
+            eintraege.push({ id: Date.now(), datum: d, typ: document.getElementById('typ').value, start: document.getElementById('start').value, ende: document.getElementById('ende').value, pause: parseInt(document.getElementById('pause').value) || 0 });
+            localStorage.setItem('kavo_data_v21', JSON.stringify(eintraege));
+            render(); await saveToCloud();
+        }
+
+        async function loeschen(id) {
+            if (deleteConfirmId === id) {
+                eintraege = eintraege.filter(e => String(e.id) !== String(id));
+                localStorage.setItem('kavo_data_v21', JSON.stringify(eintraege));
+                deleteConfirmId = null;
+                render(); await saveToCloud();
+            } else {
+                deleteConfirmId = id;
+                render();
+            }
+        }
+
+        function kopieren(id) {
+            const original = eintraege.find(e => String(e.id) === String(id));
+            if(original) {
+                const alt = new Date(original.datum); alt.setDate(alt.getDate() + 1);
+                eintraege.push({ ...original, id: Date.now(), datum: alt.toISOString().split('T')[0] });
+                localStorage.setItem('kavo_data_v21', JSON.stringify(eintraege)); render(); saveToCloud();
+            }
+        }
+
+        function render() {
+            const monIdx = parseInt(document.getElementById('monatFilter').value);
+            const tbody = document.getElementById('tabelleBody');
+            const tagSollStandard = config.umfang / 5;
+            tbody.innerHTML = '';
+            
+            const tageMap = {};
+            eintraege.forEach(e => { if(!tageMap[e.datum]) tageMap[e.datum] = []; tageMap[e.datum].push(e); });
+            const ftList = getFeiertage(config.jahr);
+            Object.keys(ftList).forEach(ft => { if(!tageMap[ft]) tageMap[ft] = [{id:0, typ:"Feiertag", info: ftList[ft]}]; });
+
+            let jahresSaldo = config.uebertrag;
+            let uTage = 0;
+
+            Object.keys(tageMap).sort().forEach(d => {
+                const dateObj = new Date(d);
+                if(dateObj.getFullYear() !== config.jahr) return;
+                const istFT = !!ftList[d], istWE = (dateObj.getDay() === 0 || dateObj.getDay() === 6);
+                const aktuellerTagSoll = (istWE || istFT) ? 0 : tagSollStandard;
+                let tNetto = 0, tZuschlag = 0, isU = false;
+
+                tageMap[d].forEach(e => {
+                    if(e.typ === 'Arbeit') {
+                        const s = formatTimeToH(e.start), en = formatTimeToH(e.ende);
+                        tNetto += (en - s - (e.pause/60)); tZuschlag += calculateBlockZuschlag(d, s, en);
+                    } else if(['Urlaub','Krank','Feiertag'].includes(e.typ)) { 
+                        if(e.typ !== 'Feiertag') tNetto = aktuellerTagSoll; 
+                        if(e.typ === 'Urlaub') isU = true; 
+                    }
+                });
+
+                const tSaldo = (tNetto + tZuschlag - aktuellerTagSoll); 
+                jahresSaldo += tSaldo; 
+                if(isU) uTage++;
+
+                if(dateObj.getMonth() === monIdx) {
+                    tageMap[d].sort((a,b) => (a.start||"").localeCompare(b.start||"")).forEach((e, idx) => {
+                        const isFirst = idx === 0;
+                        const isDeleting = deleteConfirmId === e.id;
+                        let rN = "", rZ = "";
+                        if(e.typ === 'Arbeit') {
+                            const valN = formatTimeToH(e.ende) - formatTimeToH(e.start) - (e.pause/60);
+                            const valZ = calculateBlockZuschlag(d, formatTimeToH(e.start), formatTimeToH(e.ende));
+                            rN = formatHToTime(valN); rZ = valZ > 0 ? "+" + formatHToTime(valZ) : "";
+                        } else if(isFirst && e.typ !== 'Feiertag') { rN = formatHToTime(tNetto); }
+                        
+                        tbody.innerHTML += `
+                            <tr class="${istFT ? 'bg-blue-50/50' : (istWE ? 'bg-slate-50' : '')}">
+                                <td class="p-2 md:p-4 border-r font-bold">${isFirst ? dateObj.toLocaleDateString('de-DE', {day:'2-digit', month:'2-digit'}) : ''}</td>
+                                <td class="p-2 md:p-4 border-r text-[9px] text-slate-400 uppercase font-bold">${e.typ === 'Feiertag' ? 'FT' : e.typ.substring(0,2)}</td>
+                                <td class="p-2 md:p-4 border-r mobile-hide">${e.start || ''} ${e.ende ? '-'+e.ende : ''}</td>
+                                <td class="p-2 md:p-4 border-r text-center">${rN}</td>
+                                <td class="p-2 md:p-4 border-r text-center text-psg font-bold">${rZ}</td>
+                                <td class="p-2 md:p-4 border-r text-center mobile-hide text-slate-300">${isFirst ? formatHToTime(aktuellerTagSoll) : ''}</td>
+                                <td class="p-2 md:p-4 text-right font-black ${isFirst ? (tSaldo >= 0 ? 'text-emerald-600' : 'text-rose-600') : ''}">${isFirst ? formatHToTime(tSaldo) : ''}</td>
+                                <td class="p-2 md:p-4 no-print text-center flex justify-center items-center gap-3">
+                                    ${e.id !== 0 ? `
+                                        ${!isDeleting ? `<button onclick="kopieren(${e.id})" class="opacity-30 hover:opacity-100 text-lg">📋</button>` : ''}
+                                        <button onclick="loeschen(${e.id})" class="${isDeleting ? 'confirm-delete' : 'text-rose-400 text-lg'}">${isDeleting ? 'OK' : '✕'}</button>
+                                    ` : ''}
+                                </td>
+                            </tr>`;
+                    });
+                }
+            });
+            document.getElementById('stat_gesamt').innerText = formatHToTime(jahresSaldo);
+            document.getElementById('stat_urlaub').innerText = (config.urlaub - uTage) + " T";
+            document.getElementById('print_gesamtsaldo').innerText = formatHToTime(jahresSaldo);
+            document.getElementById('print_name_monat').innerText = `${config.name} - ${config.jahr}`;
+        }
+        window.onload = loadFromCloud;
+    </script>
+</body>
+</html>
